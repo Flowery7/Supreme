@@ -639,11 +639,143 @@
         });
 
         // Form submission
-        document.getElementById('quote-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            alert('Thank you for your request! We will contact you shortly with your free quote.');
+        // Form submission handler
+document.getElementById('quote-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const submitButton = this.querySelector('button[type="submit"]');
+    const originalButtonText = submitButton.textContent;
+    
+    const formData = {
+        name: sanitizeInput(document.getElementById('name').value.trim()),
+        email: sanitizeInput(document.getElementById('email').value.trim()),
+        phone: sanitizeInput(document.getElementById('phone').value.trim()),
+        location: sanitizeInput(document.getElementById('location').value.trim()),
+        message: sanitizeInput(document.getElementById('message').value.trim()),
+        timestamp: new Date().toISOString()
+    };
+    
+    if (!validateFormData(formData)) return;
+    
+    submitButton.disabled = true;
+    submitButton.textContent = 'Sending...';
+    
+    try {
+        const response = await sendToLambda(formData);
+        
+        if (response.success) {
+            showNotification('Thank you! Your quote request has been sent successfully. We will contact you shortly.', 'success');
             this.reset();
+        } else {
+            throw new Error(response.message || 'Failed to send request');
+        }
+    } catch (error) {
+        console.error('Error submitting form:', error);
+        if (error.name === 'AbortError') {
+            showNotification('Request timed out. Please check your connection and try again.', 'error');
+        } else {
+            showNotification('Sorry, there was an error sending your request. Please try again or call us directly.', 'error');
+        }
+    } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = originalButtonText;
+    }
+});
+
+// Validate form data
+function validateFormData(data) {
+    if (!data.name || !data.email || !data.phone || !data.location || !data.message) {
+        showNotification('Please fill in all required fields.', 'error');
+        return false;
+    }
+
+    // Improved email validation (better coverage)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(data.email)) {
+        showNotification('Please enter a valid email address.', 'error');
+        return false;
+    }
+
+    // UK phone validation
+    const phoneRegex = /^(?:(?:\+44)|(?:0))(?:\d\s?){9,10}$/;
+    if (!phoneRegex.test(data.phone.replace(/\s/g, ''))) {
+        showNotification('Please enter a valid UK phone number.', 'error');
+        return false;
+    }
+
+    return true;
+}
+
+// Send data to Lambda function
+async function sendToLambda(formData) {
+    // Store URL in an environment variable or config for security
+    const LAMBDA_URL = window.LAMBDA_URL || 'https://your-lambda-function-url.execute-api.region.amazonaws.com/prod/contact';
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+    try {
+        const response = await fetch(LAMBDA_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData),
+            signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        return await response.json();
+    } catch (error) {
+        clearTimeout(timeoutId);
+        throw error;
+    }
+}
+
+// Basic XSS protection
+function sanitizeInput(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Show notification to user
+function showNotification(message, type = 'info') {
+    const existingNotification = document.getElementById('form-notification');
+    if (existingNotification) existingNotification.remove();
+
+    const notification = document.createElement('div');
+    notification.id = 'form-notification';
+    notification.setAttribute('role', 'alert'); // Accessibility
+    notification.setAttribute('aria-live', 'polite');
+    notification.className = `
+        fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm transition-opacity duration-300 opacity-0
+        ${type === 'success' ? 'bg-green-500 text-white' :
+          type === 'error' ? 'bg-red-500 text-white' :
+          'bg-blue-500 text-white'}
+    `;
+    notification.textContent = message;
+
+    document.body.appendChild(notification);
+
+    // Smooth fade-in
+    requestAnimationFrame(() => {
+        notification.classList.remove('opacity-0');
+        notification.classList.add('opacity-100');
+    });
+
+    setTimeout(() => {
+        notification.classList.add('opacity-0');
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 300);
+    }, 5000);
+}
 
         // Smooth scrolling for anchor links
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
