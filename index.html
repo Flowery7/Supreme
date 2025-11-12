@@ -739,7 +739,7 @@ function validateFormData(data) {
 // Send data to Lambda function
 async function sendToLambda(formData) {
     // Store URL in an environment variable or config for security
-    const LAMBDA_URL = window.LAMBDA_URL || 'https://your-lambda-function-url.execute-api.region.amazonaws.com/prod/contact';
+    const LAMBDA_URL = window.LAMBDA_URL || 'https://your-api-id.execute-api.your-region.amazonaws.com/prod/contact';
     
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
